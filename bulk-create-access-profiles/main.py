@@ -29,16 +29,6 @@ logger.addHandler(console_handler)
 logger.addHandler(file_handler)
 
 
-class Config:
-    def __init__(self):
-        self.config = self.load_config()
-
-    def load_config(self):
-        with open("config.yaml", "r") as f:
-            config = yaml.safe_load(f)
-        return config
-
-
 class ApiCalls:
     def __init__(self, jwt_token):
         self.token = jwt_token
@@ -80,8 +70,11 @@ class ApiCalls:
             "Accept": "application/json",
             "Authorization": f"Bearer {self.token}"
         }
-
-        return self._request("GET", endpoint=url, headers=headers, data=None, params=params)[0].get("id")
+        response = self._request("GET", endpoint=url, headers=headers, data=None, params=params)
+        if response:
+            return response[0].get("id")
+        else:
+            return None
 
     def get_identity_id(self, mail):
         url = '/v3/search'
@@ -225,31 +218,37 @@ def create_approval_schemes(api, access_profiles, access_profile_name):
         api.add_members_to_group(workgroup_id, members)
         logger.info(f"Grupo de governança '{group_name}' criado e membros adicionados com sucesso.")
 
-        return [{"approverType": "GOVERNANCE_GROUP", "approverId": workgroup_id},{"approverType": "MANAGER","approverId": None}]
+        return [{"approverType": "MANAGER","approverId": None},{"approverType": "GOVERNANCE_GROUP", "approverId": workgroup_id}]
     else:
         logger.info(f"Apenas um owner encontrado para o perfil de acesso '{access_profile_name}'. Usando o tipo de aprovador 'OWNER'.")
-        return [{"approverType": "OWNER"},{"approverType": "MANAGER","approverId": None}]
+        return [{"approverType": "MANAGER","approverId": None},{"approverType": "OWNER"}]
 
 
 
 def treat_access_profile(api, access_profile_name, access_profiles):
     entitlements = []
+    source_id = api.get_source_id(access_profiles[0]['SourceName'])
+    for access_profile in access_profiles:
+        entitlement_id = api.get_entitlement_id(source_id, access_profile['Entitlement'])
+        if entitlement_id:
+            if entitlement_id not in entitlements:
+                entitlements.append(entitlement_id)
+        else:
+            logger.error(f"Entitlement {access_profile['Entitlement']} não foi encontrado. Pulando criacao do access profile {access_profile_name}")
+            return
+
     owner_info = api.get_identity_id(access_profiles[0]['AccessProfileOwner'])
     owner_id = owner_info.get("id")
     owner_name = owner_info.get("name")
-    source_id = api.get_source_id(access_profiles[0]['SourceName'])
 
-    for access_profile in access_profiles:
-        entitlement_id = api.get_entitlement_id(source_id, access_profile['Entitlement'])
-        if entitlement_id not in entitlements:
-            entitlements.append(entitlement_id)
+    
 
     approval_schemes = create_approval_schemes(api, access_profiles, access_profile_name)
 
     payload = {
         "name": access_profile_name,
         "description": f"Grupo de acesso Suzano para o {access_profile_name}",
-        "enabled": False,
+        "enabled": True,
         "owner": {
             "type": "IDENTITY",
             "id": owner_id,
@@ -283,12 +282,10 @@ def treat_access_profile(api, access_profile_name, access_profiles):
 
 def main():
     logger.info("Starting Bulk Operation - Access Profile")
-
-    env = Config()
     token = get_token()
     api = ApiCalls(token)
 
-    access_profiles_data = "access_profiles.csv"
+    access_profiles_data = read_csv("access_profiles.csv", "AccessProfileName")
 
     for access_profile_name, access_profiles in access_profiles_data.items():
         treat_access_profile(api, access_profile_name, access_profiles)
@@ -297,7 +294,11 @@ def main():
 
 
 if __name__ == "__main__":
-    tenant = input("insira o tenant (ex: acme,acme-sb): ")
-    client_id = input("insira o client id: ")
-    client_secret = input("insira o client secret: ")
+    #tenant = input("insira o tenant (ex: acme,acme-sb): ")
+    #client_id = input("insira o client id: ")
+    #client_secret = input("insira o client secret: ")
+
+    tenant = "suzano"
+    client_id = "499aa9fd87a040e08c078792f2b74047"
+    client_secret = "feb6c07b06ebf6bbcb32c1e26f08665525626822704690af422225fe5e9e6cf2"
     main()

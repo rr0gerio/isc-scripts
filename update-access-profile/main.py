@@ -27,8 +27,15 @@ def atualizar_perfil(tenant, access_token, profile_id):
     payload = [
         {
             "op": "replace",
-            "path": "/enabled",
-            "value": True,
+            "path": "/accessRequestConfig/approvalSchemes",
+            "value": [ {
+                    "approverType": "MANAGER",
+                    "approverId": None
+                },
+                {
+                    "approverType": "OWNER",
+                    "approverId": None
+                }],
             
         }
     ]
